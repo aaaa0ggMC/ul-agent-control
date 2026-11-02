@@ -1,0 +1,50 @@
+buildscript {
+    repositories {
+        maven { url = "https://files.minecraftforge.net/maven" }
+        maven { url = "https://repo.maven.apache.org/maven2" }
+    }
+    dependencies {
+        classpath "net.minecraftforge.gradle:ForgeGradle:2.3-SNAPSHOT"
+    }
+}
+
+apply plugin: "net.minecraftforge.gradle.forge"
+
+version = "1.0.0"
+group = "aaaa0ggmc"
+archivesBaseName = "ul-agent-control"
+
+sourceCompatibility = targetCompatibility = "1.8"
+compileJava.options.encoding = "UTF-8"
+
+minecraft {
+    // 与兄弟项目一致：开发用 2847（Forge maven 上有 userdev），运行 2860 通用
+    version = "1.12.2-14.23.5.2847"
+    mappings = "stable_39"
+    runDir = "run"
+}
+
+repositories {
+    maven { url = "https://repo.maven.apache.org/maven2" }
+}
+
+dependencies {
+    // 无第三方依赖：纯 MC + Forge，可装进任何 1.12.2 实例做程式化控制
+}
+
+jar {
+    finalizedBy 'reobfJar'
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "mcversion", "1.12.2"
+
+    from(sourceSets.main.resources.srcDirs) {
+        include "mcmod.info"
+        expand "version": project.version, "mcversion": "1.12.2"
+    }
+    from(sourceSets.main.resources.srcDirs) {
+        exclude "mcmod.info"
+    }
+}

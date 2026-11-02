@@ -1,0 +1,16 @@
+[
+  {
+    "modid": "ul_agent_control",
+    "name": "UL Agent Control",
+    "description": "Programmatic game control for testing: tick rate, virtual input, camera, actions, command execution with captured output, screenshots and state readback over a loopback HTTP API. 测试用程式化控制：tick 调速、虚拟输入、视角、动作、命令执行回传、截图与状态回读。",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "url": "",
+    "updateUrl": "",
+    "authorList": ["aaaa0ggmc"],
+    "credits": "",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": []
+  }
+]
