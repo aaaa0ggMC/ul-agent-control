@@ -39,6 +39,8 @@ public class ClientTickHandler {
         return null;
     }
 
+    private static boolean focusFixApplied;
+
     static {
         // 开发环境是映射名，运行时是 SRG 名，两个都试
         timerField = findField(Minecraft.class, "timer", "field_71428_T");
@@ -47,6 +49,22 @@ public class ClientTickHandler {
         }
         if (timerField == null || tickLengthField == null) {
             UlAgentControl.LOGGER.error("[ulac] timer reflection unavailable");
+        }
+    }
+
+    /**
+     * 关掉「失去焦点自动暂停」：无头/无人值守驱动时游戏必须一直跑，
+     * 否则一失焦就弹暂停菜单、世界停摆，命令队列全部超时。
+     */
+    private static void applyFocusFix(Minecraft mc) {
+        try {
+            if (mc.gameSettings != null && mc.gameSettings.pauseOnLostFocus) {
+                mc.gameSettings.pauseOnLostFocus = false;
+                mc.gameSettings.saveOptions();
+                UlAgentControl.LOGGER.info("[ulac] pauseOnLostFocus disabled (unfocused game keeps running)");
+            }
+        } catch (Throwable t) {
+            UlAgentControl.LOGGER.warn("[ulac] focus fix failed: {}", t.toString());
         }
     }
 
@@ -75,6 +93,12 @@ public class ClientTickHandler {
             return;
         }
         Minecraft mc = Minecraft.getMinecraft();
+
+        // 失焦暂停修复（一次性）
+        if (!focusFixApplied) {
+            focusFixApplied = true;
+            applyFocusFix(mc);
+        }
 
         // 聊天缓冲（命令输出/事件文案都从这过）
         // （聊天事件在 onChatReceived 里写入 ControlState）
@@ -151,6 +175,36 @@ public class ClientTickHandler {
                 JsonObject r = new JsonObject();
                 r.addProperty("ok", true);
                 r.addProperty("sent", text);
+                return r;
+            }
+            case "join": {
+                // 主菜单直接进世界（等价于世界列表点 Play），免 GUI 操作
+                if (mc.player != null) {
+                    return ControlState.QueuedAction.error("already in game");
+                }
+                String want = action.params.has("name") ? action.params.get("name").getAsString() : null;
+                java.util.List<net.minecraft.world.storage.WorldSummary> saves;
+                try {
+                    saves = mc.getSaveLoader().getSaveList();
+                } catch (Throwable t) {
+                    return ControlState.QueuedAction.error("cannot list saves: " + t);
+                }
+                net.minecraft.world.storage.WorldSummary target = null;
+                StringBuilder names = new StringBuilder();
+                for (net.minecraft.world.storage.WorldSummary s : saves) {
+                    if (names.length() > 0) names.append(", ");
+                    names.append(s.getFileName());
+                    if (want == null || want.equals(s.getFileName()) || want.equals(s.getDisplayName())) {
+                        target = s;
+                    }
+                }
+                if (target == null) {
+                    return ControlState.QueuedAction.error("world not found: " + want + " | available: " + names);
+                }
+                net.minecraftforge.fml.client.FMLClientHandler.instance().tryLoadExistingWorld(null, target);
+                JsonObject r = new JsonObject();
+                r.addProperty("ok", true);
+                r.addProperty("joining", target.getFileName());
                 return r;
             }
             case "screenshot": {
