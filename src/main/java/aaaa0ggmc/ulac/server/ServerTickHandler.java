@@ -107,6 +107,28 @@ public class ServerTickHandler {
             r.addProperty("respawned", true);
             return r;
         }
+        if ("invoke".equals(action.type)) {
+            // 服务端语义的反射调用：在服务端 tick 内执行（只有放行 tick 才跑到这里，
+            // 实体位置/移动增量等状态都是活的——冻结期的 futureTaskQueue 里跑会看到静止世界）。
+            String cls = action.params.has("class") ? action.params.get("class").getAsString() : "";
+            String mth = action.params.has("method") ? action.params.get("method").getAsString() : "";
+            boolean withPlayer = action.params.has("arg")
+                    && "player".equals(action.params.get("arg").getAsString());
+            try {
+                Class<?> c = Class.forName(cls);
+                java.lang.reflect.Method m = withPlayer
+                        ? c.getDeclaredMethod(mth, EntityPlayerMP.class)
+                        : c.getDeclaredMethod(mth);
+                m.setAccessible(true);
+                Object out = withPlayer ? m.invoke(null, player) : m.invoke(null);
+                r.addProperty("ok", true);
+                r.addProperty("returned", String.valueOf(out));
+                return r;
+            } catch (Throwable t) {
+                Throwable cause = t.getCause() != null ? t.getCause() : t;
+                return ControlState.QueuedAction.error("invoke failed: " + cause);
+            }
+        }
         return ControlState.QueuedAction.error("unknown server action: " + action.type);
     }
 }

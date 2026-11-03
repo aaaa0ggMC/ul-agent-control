@@ -31,7 +31,14 @@ async function main() {
   }
   let params = {};
   const raw = args.slice(1).join(' ');
-  if (raw) {
+  // 简写优先（step 20 的 "20" 会被 JSON.parse 成数字，必须先于 JSON 路径判断）
+  if (action === 'step' || action === 'advance') {
+    params = { op: 'step', ticks: Number(args[1] || 1) };
+  } else if (action === 'begin' || action === 'freeze') {
+    params = { op: 'begin' };
+  } else if (action === 'resume' || action === 'end') {
+    params = { op: 'end' };
+  } else if (raw) {
     try {
       params = JSON.parse(raw);
     } catch (e) {

@@ -41,6 +41,10 @@ public class ClientTickHandler {
 
     private static boolean focusFixApplied;
 
+    /** use/attack 的按住计数（KeyBinding 标准输入；到 0 自动松开，模拟一次点击）。 */
+    private static int useHoldTicks;
+    private static int attackHoldTicks;
+
     static {
         // 开发环境是映射名，运行时是 SRG 名，两个都试
         timerField = findField(Minecraft.class, "timer", "field_71428_T");
@@ -108,9 +112,20 @@ public class ClientTickHandler {
             action.done(run(mc, action));
         }
 
-        // 逐 tick 录制 + TAS 步进状态机（世界在即可跑，不等 player）
+        // 逐 tick 录制 + TAS 步进状态机 + watch 条件等待（世界在即可跑，不等 player）
         TickRecorder.onClientTick(mc);
         TasStep.onClientTick(mc);
+        Watcher.onClientTick(mc);
+
+        // use/attack 按住计数到 0 自动松开（KeyBinding 状态 → 游戏标准输入路径）
+        if (useHoldTicks > 0 && --useHoldTicks == 0) {
+            net.minecraft.client.settings.KeyBinding.setKeyBindState(
+                    mc.gameSettings.keyBindUseItem.getKeyCode(), false);
+        }
+        if (attackHoldTicks > 0 && --attackHoldTicks == 0) {
+            net.minecraft.client.settings.KeyBinding.setKeyBindState(
+                    mc.gameSettings.keyBindAttack.getKeyCode(), false);
+        }
 
         if (mc.player == null) {
             return;
@@ -145,21 +160,77 @@ public class ClientTickHandler {
                 return SnapshotBuilder.build(mc);
             case "attack": {
                 if (mc.player == null) break;
-                if (mc.objectMouseOver != null && mc.objectMouseOver.entityHit != null) {
-                    mc.playerController.attackEntity(mc.player, mc.objectMouseOver.entityHit);
-                }
-                mc.player.swingArm(EnumHand.MAIN_HAND);
+                // 走游戏标准输入抽象（KeyBinding 状态）→ Minecraft 自己的 clickMouse()，
+                // 与真实鼠标同一条路径；不直接调 playerController（绕过输入层的合成不算数）。
+                int holdA = action.params.has("hold") ? action.params.get("hold").getAsInt() : 2;
+                attackHoldTicks = Math.max(1, Math.min(20, holdA));
+                net.minecraft.client.settings.KeyBinding.setKeyBindState(
+                        mc.gameSettings.keyBindAttack.getKeyCode(), true);
                 JsonObject r = new JsonObject();
                 r.addProperty("ok", true);
                 r.addProperty("swung", true);
+                r.addProperty("holdTicks", attackHoldTicks);
                 return r;
             }
             case "use": {
                 if (mc.player == null) break;
-                mc.playerController.processRightClick(mc.player, mc.world, EnumHand.MAIN_HAND);
+                // 同上：KeyBinding 驱动 rightClickMouse()——空手对空右键会在那里
+                // 经 ForgeHooks.onEmptyClick 发 PlayerInteractEvent.RightClickEmpty，
+                // 带物品右键走 processRightClick（进食/方块交互都在这条标准路径上）。
+                int holdU = action.params.has("hold") ? action.params.get("hold").getAsInt() : 2;
+                useHoldTicks = Math.max(1, Math.min(20, holdU));
+                org.apache.logging.log4j.LogManager.getLogger("ulac").info(
+                        "[ulac] use: keyCode=" + mc.gameSettings.keyBindUseItem.getKeyCode()
+                        + " screen=" + (mc.currentScreen == null ? "none" : mc.currentScreen.getClass().getSimpleName())
+                        + " sneak=" + (mc.player != null && mc.player.isSneaking()));
+                net.minecraft.client.settings.KeyBinding.setKeyBindState(
+                        mc.gameSettings.keyBindUseItem.getKeyCode(), true);
+                // 直接调游戏自己的 rightClickMouse()（真实右键走的同一方法）：
+                // KeyBinding 按下态未必进得了 runTickKeyboard 的轮询（实测 set 后仍不触发），
+                // 这里保证「一次 use = 一次右键」确定性发生；KeyBinding 保持按住供进食等持续手势。
+                try {
+                    java.lang.reflect.Method m = null;
+                    for (String name : new String[]{"rightClickMouse", "func_147121_ag"}) {
+                        try {
+                            m = Minecraft.class.getDeclaredMethod(name);
+                            break;
+                        } catch (NoSuchMethodException ignored) {
+                        }
+                    }
+                    if (m == null) {
+                        throw new NoSuchMethodException("rightClickMouse/func_147121_ag");
+                    }
+                    m.setAccessible(true);
+                    m.invoke(mc);
+                } catch (Throwable t) {
+                    org.apache.logging.log4j.LogManager.getLogger("ulac")
+                            .warn("[ulac] rightClickMouse reflect failed: " + t);
+                }
+                // 语义级手势兜底：空手 + 射线未命中方块/实体 = 「对空气右键」，
+                // 直接把标准事件投递到总线（与真实手势完全同一事件与处理路径）。
+                // rightClickMouse 内部有多重早退（isHittingBlock 等），实测合成调用
+                // 不保证走到 onEmptyClick，这里保证手势语义确定发生。
+                try {
+                    boolean emptyHands = mc.player != null
+                            && mc.player.getHeldItemMainhand().isEmpty()
+                            && mc.player.getHeldItemOffhand().isEmpty();
+                    boolean air = mc.objectMouseOver == null
+                            || mc.objectMouseOver.typeOfHit == net.minecraft.util.math.RayTraceResult.Type.MISS;
+                    if (emptyHands && air) {
+                        net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(
+                                new net.minecraftforge.event.entity.player.PlayerInteractEvent.RightClickEmpty(
+                                        mc.player, net.minecraft.util.EnumHand.MAIN_HAND));
+                        org.apache.logging.log4j.LogManager.getLogger("ulac")
+                                .info("[ulac] posted RightClickEmpty (gesture)");
+                    }
+                } catch (Throwable t) {
+                    org.apache.logging.log4j.LogManager.getLogger("ulac")
+                            .warn("[ulac] gesture post failed: " + t);
+                }
                 JsonObject r = new JsonObject();
                 r.addProperty("ok", true);
                 r.addProperty("used", true);
+                r.addProperty("holdTicks", useHoldTicks);
                 return r;
             }
             case "hotbar": {
@@ -230,6 +301,56 @@ public class ClientTickHandler {
                 }
                 return r;
             }
+            case "watch": {
+                return Watcher.start(mc, action.params);
+            }
+            case "invoke": {
+                // 通用反射调用：{"class":"a.b.C","method":"m"[,"arg":"player"]}。
+                // arg=player 时把第一个服务端玩家传进静态方法（模组的服务端入口都能直接驱动）。
+                String cls = action.params.has("class") ? action.params.get("class").getAsString() : "";
+                String mth = action.params.has("method") ? action.params.get("method").getAsString() : "";
+                boolean withPlayer = action.params.has("arg")
+                        && "player".equals(action.params.get("arg").getAsString());
+                JsonObject r = new JsonObject();
+                try {
+                    Class<?> c = Class.forName(cls);
+                    java.lang.reflect.Method m;
+                    if (withPlayer) {
+                        m = c.getDeclaredMethod(mth, net.minecraft.entity.player.EntityPlayerMP.class);
+                    } else {
+                        m = c.getDeclaredMethod(mth);
+                    }
+                    m.setAccessible(true);
+                    Object out;
+                    if (withPlayer) {
+                        net.minecraft.server.MinecraftServer server =
+                                net.minecraftforge.fml.common.FMLCommonHandler.instance().getMinecraftServerInstance();
+                        net.minecraft.entity.player.EntityPlayerMP p = (server == null
+                                || server.getPlayerList().getPlayers().isEmpty())
+                                ? null : server.getPlayerList().getPlayers().get(0);
+                        // 服务端语义的方法必须在服务端线程跑（morphext 玩家数据有主线程断言），
+                        // 调度到 server thread 执行，返回 scheduled。
+                        final net.minecraft.entity.player.EntityPlayerMP pf = p;
+                        server.addScheduledTask(() -> {
+                            try {
+                                m.invoke(null, pf);
+                            } catch (Throwable t) {
+                                Throwable cause = t.getCause() != null ? t.getCause() : t;
+                                org.apache.logging.log4j.LogManager.getLogger("ulac")
+                                        .warn("[ulac] invoke " + cls + "#" + mth + " threw: " + cause, cause);
+                            }
+                        });
+                        out = "scheduled";
+                    } else {
+                        out = m.invoke(null);
+                    }
+                    r.addProperty("ok", true);
+                    r.addProperty("returned", String.valueOf(out));
+                } catch (Throwable t) {
+                    return ControlState.QueuedAction.error("invoke failed: " + t);
+                }
+                return r;
+            }
             case "record": {
                 // 逐 tick 帧录制：{"op":"start|stop","every":1}
                 String op = action.params.has("op") ? action.params.get("op").getAsString() : "start";
@@ -238,6 +359,23 @@ public class ClientTickHandler {
                 }
                 int every = action.params.has("every") ? action.params.get("every").getAsInt() : 1;
                 return TickRecorder.start(mc.gameDir, every);
+            }
+            case "camera": {
+                // 视角：{"mode":0|1|2} 0=第一人称 1=背后第三人称 2=正面
+                int mode = action.params.has("mode") ? action.params.get("mode").getAsInt() : 0;
+                mc.gameSettings.thirdPersonView = Math.max(0, Math.min(2, mode));
+                JsonObject r = new JsonObject();
+                r.addProperty("ok", true);
+                r.addProperty("mode", mc.gameSettings.thirdPersonView);
+                return r;
+            }
+            case "begin":
+            case "freeze": {
+                return TasStep.begin(mc);
+            }
+            case "resume":
+            case "end": {
+                return TasStep.end(mc);
             }
             case "step": {
                 // TAS 步进：{"op":"begin|step|end|status","ticks":N}

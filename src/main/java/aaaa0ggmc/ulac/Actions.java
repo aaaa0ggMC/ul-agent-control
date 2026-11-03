@@ -79,12 +79,41 @@ public final class Actions {
             case "chat":
             case "join":
             case "screenshot":
+            case "camera":
+            case "begin":
+            case "freeze":
+            case "resume":
+            case "end":
             case "record":
             case "step": {
                 long wait = (long) num(req, "wait_ms", 5000.0);
                 ControlState.QueuedAction q = new ControlState.QueuedAction(action, req, true);
                 ControlState.CLIENT_ACTIONS.add(q);
                 return q.await(wait);
+            }
+            case "invoke": {
+                // 通用反射调用：{"class":"a.b.C","method":"m"[,"arg":"player"]}。
+                // arg=player 走服务端 tick 队列（实体状态是活的）；否则客户端线程。
+                long wait = (long) num(req, "wait_ms", 8000.0);
+                boolean withPlayer = req.has("arg") && "player".equals(req.get("arg").getAsString());
+                ControlState.QueuedAction q = new ControlState.QueuedAction("invoke", req, true);
+                if (withPlayer) {
+                    ControlState.SERVER_ACTIONS.add(q);
+                } else {
+                    ControlState.CLIENT_ACTIONS.add(q);
+                }
+                return q.await(wait);
+            }
+            case "watch": {
+                // watch(条件, tick 速度, 超时)：步进推进时间直到条件满足。
+                ControlState.QueuedAction q = new ControlState.QueuedAction("watch", req, true);
+                ControlState.CLIENT_ACTIONS.add(q);
+                JsonObject started = q.await(3000L);
+                if (started != null && started.has("ok") && !started.get("ok").getAsBoolean()) {
+                    return started;
+                }
+                long timeout = (long) num(req, "timeout_ms", 120000.0);
+                return aaaa0ggmc.ulac.client.Watcher.awaitFinish(timeout + 5000L);
             }
             default: {
                 return ControlState.QueuedAction.error("unknown action: " + action);
