@@ -108,6 +108,10 @@ public class ClientTickHandler {
             action.done(run(mc, action));
         }
 
+        // 逐 tick 录制 + TAS 步进状态机（世界在即可跑，不等 player）
+        TickRecorder.onClientTick(mc);
+        TasStep.onClientTick(mc);
+
         if (mc.player == null) {
             return;
         }
@@ -225,6 +229,31 @@ public class ClientTickHandler {
                     return ControlState.QueuedAction.error("screenshot failed: " + t);
                 }
                 return r;
+            }
+            case "record": {
+                // 逐 tick 帧录制：{"op":"start|stop","every":1}
+                String op = action.params.has("op") ? action.params.get("op").getAsString() : "start";
+                if (op.equals("stop")) {
+                    return TickRecorder.stop();
+                }
+                int every = action.params.has("every") ? action.params.get("every").getAsInt() : 1;
+                return TickRecorder.start(mc.gameDir, every);
+            }
+            case "step": {
+                // TAS 步进：{"op":"begin|step|end|status","ticks":N}
+                String op = action.params.has("op") ? action.params.get("op").getAsString() : "status";
+                switch (op) {
+                    case "begin":
+                        return TasStep.begin(mc);
+                    case "end":
+                        return TasStep.end(mc);
+                    case "status":
+                        return TasStep.status();
+                    default:
+                        break;
+                }
+                int ticks = action.params.has("ticks") ? action.params.get("ticks").getAsInt() : 1;
+                return TasStep.step(mc, ticks);
             }
             default:
                 break;

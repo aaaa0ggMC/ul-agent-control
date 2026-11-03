@@ -78,7 +78,9 @@ public final class Actions {
             case "hotbar":
             case "chat":
             case "join":
-            case "screenshot": {
+            case "screenshot":
+            case "record":
+            case "step": {
                 long wait = (long) num(req, "wait_ms", 5000.0);
                 ControlState.QueuedAction q = new ControlState.QueuedAction(action, req, true);
                 ControlState.CLIENT_ACTIONS.add(q);

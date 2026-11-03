@@ -49,6 +49,9 @@ public class ServerTickHandler {
         ControlState.achievedTps = 1000.0 / Math.max(1.0, ControlState.lastTickMs);
         lastTickNanos = now;
 
+        // TAS 步进计数：暂停时本事件不触发，故只在放行窗口内累加（语义即「服务端 tick 数」）
+        aaaa0ggmc.ulac.client.TasStep.onServerTick();
+
         ControlState.QueuedAction action;
         while ((action = ControlState.SERVER_ACTIONS.poll()) != null) {
             action.done(run(action));
