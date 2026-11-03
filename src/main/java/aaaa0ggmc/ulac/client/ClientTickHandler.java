@@ -78,6 +78,12 @@ public class ClientTickHandler {
     /** 虚拟输入：覆盖本 tick 的 movementInput（正常玩家管道的同一入口）。 */
     @SubscribeEvent
     public static void onInputUpdate(InputUpdateEvent event) {
+        // 只在虚拟输入非中立时接管；否则放行真实键盘
+        // （无条件覆盖会把玩家自己的 WASD 全清零——「按键被禁用」的根源）
+        if (ControlState.moveForward == 0.0F && ControlState.moveStrafe == 0.0F
+                && !ControlState.jump && !ControlState.sneak && !ControlState.sprint) {
+            return;
+        }
         MovementInput input = event.getMovementInput();
         input.moveForward = ControlState.moveForward;
         input.moveStrafe = ControlState.moveStrafe;
