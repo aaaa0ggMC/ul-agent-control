@@ -16,6 +16,12 @@ public final class ControlState {
     /** 目标 TPS（0.1 ~ 20；20 = 原速）。服务端节流 + 客户端 Timer 同步。 */
     public static volatile double tickTps = 20.0;
 
+    /**
+     * 操控会话已开始（收到过任意 CLI 动作）。
+     * 失焦暂停修复只在此之后生效——工具闲置时不得改动玩家的游戏行为/设置。
+     */
+    public static volatile boolean driveSessionActive = false;
+
     /** 粘性虚拟输入（客户端每个 tick 施加到 movementInput）。 */
     public static volatile float moveForward = 0.0F;
     public static volatile float moveStrafe = 0.0F;

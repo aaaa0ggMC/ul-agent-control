@@ -12,6 +12,8 @@ public final class Actions {
     }
 
     public static JsonObject dispatch(JsonObject req) {
+        // 任意 CLI 动作即视为操控会话开始（失焦暂停修复等副作用自此才生效）
+        ControlState.driveSessionActive = true;
         String action = req.has("action") ? req.get("action").getAsString() : "";
         switch (action) {
             case "tick": {

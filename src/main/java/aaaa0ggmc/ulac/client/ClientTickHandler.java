@@ -59,13 +59,19 @@ public class ClientTickHandler {
     /**
      * 关掉「失去焦点自动暂停」：无头/无人值守驱动时游戏必须一直跑，
      * 否则一失焦就弹暂停菜单、世界停摆，命令队列全部超时。
+     *
+     * 副作用收敛（2026-11-04）：
+     *  1. 不再 saveOptions() 持久化——工具只改本会话内存值，退出后玩家的
+     *     pauseOnLostFocus 设置原样恢复（持久化会把人类单人游戏的失焦暂停永久关掉，
+     *     放大「失焦期间丢松键事件 → 人物狂奔」的暴露面）；
+     *  2. 只在操控会话真正开始（收到过 CLI 动作）后才应用——工具闲置时
+     *     不碰玩家的任何游戏行为。
      */
     private static void applyFocusFix(Minecraft mc) {
         try {
             if (mc.gameSettings != null && mc.gameSettings.pauseOnLostFocus) {
                 mc.gameSettings.pauseOnLostFocus = false;
-                mc.gameSettings.saveOptions();
-                UlAgentControl.LOGGER.info("[ulac] pauseOnLostFocus disabled (unfocused game keeps running)");
+                UlAgentControl.LOGGER.info("[ulac] pauseOnLostFocus disabled for this session (unfocused game keeps running)");
             }
         } catch (Throwable t) {
             UlAgentControl.LOGGER.warn("[ulac] focus fix failed: {}", t.toString());
@@ -104,8 +110,8 @@ public class ClientTickHandler {
         }
         Minecraft mc = Minecraft.getMinecraft();
 
-        // 失焦暂停修复（一次性）
-        if (!focusFixApplied) {
+        // 失焦暂停修复（一次性，且只在操控会话开始后；见 applyFocusFix 注释）
+        if (!focusFixApplied && ControlState.driveSessionActive) {
             focusFixApplied = true;
             applyFocusFix(mc);
         }
