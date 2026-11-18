@@ -103,10 +103,15 @@ public final class TasStep {
             p = phase;
         }
         if (p == Phase.ARMING) {
-            if (--armTicks <= 0) {
-                synchronized (TasStep.class) {
+            boolean ready = false;
+            synchronized (TasStep.class) {
+                if (phase == Phase.ARMING && --armTicks <= 0) {
                     phase = Phase.READY;
+                    ready = true;
                 }
+            }
+            if (ready) {
+                // transitioned to READY
             }
         } else if (p == Phase.RUNNING) {
             int seen;

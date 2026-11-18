@@ -23,6 +23,7 @@ import java.io.File;
         modid = UlAgentControl.MODID,
         name = UlAgentControl.NAME,
         version = UlAgentControl.VERSION,
+        clientSideOnly = true,
         acceptableRemoteVersions = "*"
 )
 public class UlAgentControl {
@@ -34,6 +35,9 @@ public class UlAgentControl {
 
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
+        if (event.getSide().isServer()) {
+            return;
+        }
         File gameDir = event.getModConfigurationDirectory().getParentFile();
         ControlServer.start(gameDir);
         LOGGER.info("[ulac] agent control ready: {}", ControlServer.infoFile);

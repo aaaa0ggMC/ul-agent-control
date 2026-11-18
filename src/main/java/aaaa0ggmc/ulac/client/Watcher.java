@@ -84,8 +84,10 @@ public final class Watcher {
         }
         active = true;
         resultReady = false;
-        releaseTicks(mc);   // 先放行 tick：让实体更新跑过一轮（位移/状态可被观测）
-        evaluate(mc);       // 首次评估落在其后
+        if ("READY".equals(TasStep.status().get("phase").getAsString())) {
+            releaseTicks(mc);
+            evaluate(mc);
+        }
         r.addProperty("ok", true);
         r.addProperty("watching", cls + "#" + mth);
         r.addProperty("every", every);

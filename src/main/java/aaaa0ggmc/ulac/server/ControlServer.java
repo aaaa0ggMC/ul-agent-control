@@ -54,6 +54,11 @@ public final class ControlServer {
             }
         }
         server.createContext("/", ControlServer::handle);
+        server.setExecutor(java.util.concurrent.Executors.newFixedThreadPool(4, r -> {
+            Thread t = new Thread(r, "ulac-http");
+            t.setDaemon(true);
+            return t;
+        }));
         server.start();
         port = server.getAddress().getPort();
 
@@ -80,8 +85,13 @@ public final class ControlServer {
         try {
             String query = ex.getRequestURI().getQuery();
             String given = ex.getRequestHeaders().getFirst("X-ULAC-Token");
-            if (given == null && query != null && query.startsWith("token=")) {
-                given = query.substring("token=".length());
+            if (given == null && query != null) {
+                for (String param : query.split("&")) {
+                    if (param.startsWith("token=")) {
+                        given = param.substring("token=".length());
+                        break;
+                    }
+                }
             }
             if (token != null && !token.equals(given)) {
                 resp = err("bad token");

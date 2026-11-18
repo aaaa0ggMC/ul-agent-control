@@ -21,7 +21,7 @@ import java.io.File;
  */
 public final class TickRecorder {
 
-    private static boolean recording;
+    private static volatile boolean recording;
     private static int everyN = 1;
     private static long lastWorldTime = Long.MIN_VALUE;
     private static long tickCount;
@@ -50,6 +50,7 @@ public final class TickRecorder {
         lastWorldTime = Long.MIN_VALUE;
         tickCount = 0;
         frameIndex = 0;
+        droppedFrames.set(0);
         r.addProperty("ok", true);
         r.addProperty("dir", dir.getAbsolutePath());
         r.addProperty("everyN", everyN);
@@ -69,6 +70,7 @@ public final class TickRecorder {
             }).get(10, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Throwable ignored) {
         }
+        r.addProperty("droppedFrames", droppedFrames.get());
         return r;
     }
 
@@ -106,15 +108,20 @@ public final class TickRecorder {
 
     /** 编码队列有界：1080p 一帧 BufferedImage ~8MB，无界队列会在编码追不上捕获时把堆撑爆
      *  （实测长录制 OOM：Java heap space）。超出就丢帧并计数，宁缺帧不崩。 */
+    private static final java.util.concurrent.atomic.AtomicInteger droppedFrames =
+            new java.util.concurrent.atomic.AtomicInteger();
     private static final java.util.concurrent.ArrayBlockingQueue<Runnable> ENCODER_QUEUE =
             new java.util.concurrent.ArrayBlockingQueue<>(12);
-    private static final java.util.concurrent.ExecutorService ENCODER =
-            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
-                Thread t = new Thread(r, "ulac-frame-encoder");
-                t.setDaemon(true);
-                return t;
-            });
-    private static int droppedFrames;
+    private static final java.util.concurrent.ThreadPoolExecutor ENCODER =
+            new java.util.concurrent.ThreadPoolExecutor(
+                    1, 1, 0L, java.util.concurrent.TimeUnit.MILLISECONDS,
+                    ENCODER_QUEUE,
+                    r -> {
+                        Thread t = new Thread(r, "ulac-frame-encoder");
+                        t.setDaemon(true);
+                        return t;
+                    },
+                    (r, executor) -> droppedFrames.incrementAndGet());
 
     private static synchronized void capture(Minecraft mc) {
         if (dir == null) {
@@ -130,24 +137,17 @@ public final class TickRecorder {
                 return;
             }
             final File out = new File(dir, String.format("frame_%05d.png", index));
-            Runnable job = () -> {
+            int beforeDrops = droppedFrames.get();
+            ENCODER.execute(() -> {
                 try {
                     javax.imageio.ImageIO.write(image, "png", out);
                 } catch (Throwable ignored) {
                     // 单帧失败不中断录制
                 }
-            };
-            if (!ENCODER_QUEUE.offer(job)) {
-                droppedFrames++;
-                return;   // 队列满：丢这一帧，绝不堆积 BufferedImage
-            }
-            frameIndex++;
-            ENCODER.execute(() -> {
-                Runnable r = ENCODER_QUEUE.poll();
-                if (r != null) {
-                    r.run();
-                }
             });
+            if (droppedFrames.get() == beforeDrops) {
+                frameIndex++;
+            }
         } catch (Throwable ignored) {
             // GL 读取偶发失败（OptiFine framebuffer），跳过该帧
         }

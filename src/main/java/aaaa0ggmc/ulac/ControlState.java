@@ -48,6 +48,8 @@ public final class ControlState {
     /** 最近一次 tick 实测数据。 */
     public static volatile double lastTickMs = 0.0;
     public static volatile double achievedTps = 20.0;
+    public static volatile Runnable serverTickHook = null;
+    public static volatile boolean clearHoldsRequested = false;
 
     private ControlState() {
     }
@@ -60,12 +62,15 @@ public final class ControlState {
         sneak = false;
         sprint = false;
         lookActive = false;
+        clearHoldsRequested = true;
     }
 
     public static void addChat(String line) {
-        CHAT.add(line);
-        while (CHAT.size() > 50) {
-            CHAT.remove(0);
+        synchronized (CHAT) {
+            CHAT.add(line);
+            while (CHAT.size() > 50) {
+                CHAT.remove(0);
+            }
         }
         if (capturing) {
             CAPTURE.add(line);

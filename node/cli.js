@@ -6,7 +6,7 @@
  *   node cli.js [--dir <gameDir>] <action> [params-json]
  *
  * 例：
- *   node cli.js --dir ~/Games/HMCL/shaping_the_world state
+ *   node cli.js --dir ~/Games/Minecraft/shaping_the_world state
  *   node cli.js tick '{"rate":2}'
  *   node cli.js move '{"forward":1,"sprint":true}'
  *   node cli.js look 180 0                （简写：数字直接当参数）

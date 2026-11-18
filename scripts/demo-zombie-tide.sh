@@ -2,7 +2,7 @@
 # 不死者线全流程演示：招募 → 尸潮 → 屠村 → 热忱的腐肉 → 泰坦 → 震地（逐 tick 录制）
 # 用法: demo-zombie-tide.sh [gameDir] [out.mp4]
 set -u
-GAMEDIR="${1:-/home/aaaa0ggmc/Games/HMCL/shaping_the_world}"
+GAMEDIR="${1:-/home/aaaa0ggmc/Games/Minecraft/shaping_the_world}"
 OUT="${2:-/home/aaaa0ggmc/Games/HMCL/ul-zombie-tide-demo.mp4}"
 ULAC=/home/aaaa0ggmc/Games/HMCL/dev/ul-agent-control
 cli() { timeout "${CLITMO:-90}" node "$ULAC/node/cli.js" --dir "$GAMEDIR" "$@" 2>&1; }
